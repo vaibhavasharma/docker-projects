@@ -1,0 +1,60 @@
+pipeline {
+    agent any
+
+   stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/kpagariya/docker-projects.git'
+            }
+        }
+
+        stage('Create Docker Network') {
+            steps {
+                script {
+                    sh 'docker network create todo-app-network || true'
+                }
+            }
+        }
+
+        stage('Run MySQL Container') {
+            steps {
+                script {
+                    sh '''
+                    docker run -d --network todo-app-network --network-alias mysql \
+                    -v todo-mysql-data:/var/lib/mysql \
+                    -e MYSQL_ROOT_PASSWORD=secret \
+                    -e MYSQL_DATABASE=todos \
+                    mysql:9.0
+                    '''
+                }
+            }
+        }
+
+        stage('Build and Run Node.js App') {
+            steps {
+                script {
+                    dir('todo-app') {
+                        sh '''
+                        
+                        docker build -t todo-app:latest .
+                        docker run -p 8091:3000 --network todo-app-network \
+                        -e MYSQL_HOST=mysql \
+                        -e MYSQL_USER=root \
+                        -e MYSQL_PASSWORD=secret \
+                        -e MYSQL_DB=todos \
+                        todo-app:latest sh -c "yarn install && yarn run dev"
+                        '''
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                sh 'docker network rm todo-app-network || true'
+            }
+        }
+    }
+}
